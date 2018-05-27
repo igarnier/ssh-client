@@ -1,0 +1,9 @@
+(jbuild_version 1)
+
+(library
+ ((name        ssh_client)
+  (public_name ssh-client)
+  (c_names (libssh_stubs))
+  (c_library_flags (-lssh))
+  (libraries (batteries))
+  ))
