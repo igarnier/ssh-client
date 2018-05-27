@@ -1,55 +1,6 @@
 open Common
 
 
-module Channel =
-struct
-
-  (** Can raise exception "Failure" *)
-  external create : ssh_session -> ssh_channel = "libssh_ml_channel_create"
-
-  (** Does not raise *)
-  external close : ssh_channel -> error_code = "libssh_ml_channel_close"
-
-  (** Does not raise *)  
-  external free : ssh_channel -> unit = "libssh_ml_channel_free"
-
-  (** Does not raise *)    
-  external open_session : ssh_channel -> error_code = "libssh_ml_channel_open_session"
-
-  (** Can raise exception "Failure" *)
-  external request_exec : ssh_channel -> string -> error_code = "libssh_ml_channel_request_exec"
-
-  (** Does not raise *)
-  external request_pty : ssh_channel -> error_code = "libssh_ml_channel_request_pty"
-
-  (** Does not raise *)  
-  external change_pty_size : ssh_channel -> int -> int -> error_code = "libssh_ml_channel_change_pty_size"
-
-  (** Does not raise *)  
-  external request_shell : ssh_channel -> error_code = "libssh_ml_channel_request_shell"      
-
-  (** Can raise exception "Failure" *)
-  external read_timeout : ssh_channel -> bool -> int -> string = "libssh_ml_channel_read_timeout"
-
-  (** Can raise exception "Failure" *)
-  external write : ssh_channel -> string -> error_code = "libssh_ml_channel_write"
-
-  (** Does not raise *)  
-  external send_eof : ssh_channel -> error_code = "libssh_ml_channel_send_eof"
-
-end
-
-type log_level =
-  | SSH_LOG_NOLOG
-  | SSH_LOG_WARNING
-  | SSH_LOG_PROTOCOL
-  | SSH_LOG_PACKET
-  | SSH_LOG_FUNCTIONS
-
-type auth =
-  | Auto
-  | Interactive
-
 type options = { host: string;
                  username : string;
                  port : int;
