@@ -122,8 +122,8 @@ let input_password ~host ~username =
   read_secret ()
 
 (* Opens a session in password mode *)
-let with_password : options:options -> (ssh_session -> 'a) -> 'a  =
-  fun ~options f ->
+let with_password : options:options -> ?password:string -> (ssh_session -> 'a) -> 'a  =
+  fun ~options ?password f ->
     (* output/input are from the POV of the ancestor, i.e.
        children write on the input and the ancestor reads the output *)
     let output, input = Unix.pipe () in  
@@ -132,7 +132,12 @@ let with_password : options:options -> (ssh_session -> 'a) -> 'a  =
       failwith "Easy.with_session: error while forking"
     else if this_pid = 0 then begin
       let ssh_session = Raw.Session.new_ () in
-      let password    = input_password options.host options.username in
+      let password    =
+        match password with
+        | Some pass -> pass
+        | None ->
+          input_password options.host options.username
+      in
       auth_password ~session:ssh_session ~options ~password;
       try
         let res = f ssh_session in
