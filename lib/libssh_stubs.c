@@ -601,7 +601,7 @@ CAMLprim value libssh_ml_ssh_scp_push_directory(value scp, value dirname, value 
      char* c_dirname = caml_strdup(String_val(dirname));
 
      const int c_mode = Int_val(mode);
-
+     
      const int rc = ssh_scp_push_directory((ssh_scp) scp, c_dirname, c_mode);
      
      caml_stat_free(c_dirname);
@@ -646,6 +646,22 @@ CAMLprim value libssh_ml_ssh_scp_push_file64(value scp, value filename, value si
 
 /* bindings unimplemented */
 /* LIBSSH_API int ssh_scp_read(ssh_scp scp, void *buffer, size_t size); */
+CAMLprim value libssh_ml_ssh_scp_read(value scp, value buffer)
+{
+     CAMLparam2(scp, buffer);
+
+     const int len = caml_string_length(buffer);
+
+
+     const int rc = ssh_scp_read((ssh_scp) scp, (void*) String_val(buffer), len);
+
+     if(rc == SSH_ERROR) {
+          caml_failwith("libssh_ml_ssh_scp_read: error");
+     } else {
+          CAMLreturn(Val_int(rc));
+     }
+
+}
 
 CAMLprim value libssh_ml_ssh_scp_request_get_filename(value scp)
 {
@@ -669,8 +685,20 @@ CAMLprim value libssh_ml_ssh_scp_request_get_filename(value scp)
 /* LIBSSH_API uint64_t ssh_scp_request_get_size64(ssh_scp scp); */
 /* LIBSSH_API const char *ssh_scp_request_get_warning(ssh_scp scp); */
 
-LIBSSH_API int ssh_scp_write(ssh_scp scp, const void *buffer, size_t len);
+CAMLprim value libssh_ml_ssh_scp_write(value scp, value buffer)
+{
+     CAMLparam2(scp, buffer);
 
+     const int len = caml_string_length(buffer);
+
+     const int rc = ssh_scp_write((ssh_scp) scp, (const void*) String_val(buffer), len);
+
+     if(rc == SSH_ERROR) {
+          caml_failwith("libssh_ml_ssh_scp_read: error");
+     } else {
+          CAMLreturn(Val_unit);
+     }
+}
 
 
 

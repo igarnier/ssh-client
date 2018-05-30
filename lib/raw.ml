@@ -47,7 +47,7 @@ struct
   external request_pty : ssh_channel -> ssh_error_code = "libssh_ml_ssh_channel_request_pty"
 
   (** Does not raise *)  
-  external change_pty_size : ssh_channel -> int -> int -> ssh_error_code = "libssh_ml_channel_ssh_change_pty_size"
+  external change_pty_size : ssh_channel -> int -> int -> ssh_error_code = "libssh_ml_ssh_channel_change_pty_size"
 
   (** Does not raise *)  
   external request_shell : ssh_channel -> ssh_error_code = "libssh_ml_ssh_channel_request_shell"      
@@ -87,5 +87,11 @@ struct
   external push_file : ssh_scp -> string -> int -> int -> ssh_error_code = "libssh_ml_ssh_scp_push_file"
 
   external push_file64 : ssh_scp -> string -> int64 -> int -> ssh_error_code = "libssh_ml_ssh_scp_push_file"
+
+  external read : ssh_scp -> bytes -> int = "libssh_ml_ssh_scp_read"
+
+  external request_get_filename : ssh_scp -> string = "libssh_ml_ssh_scp_request_get_filename"
+
+  external write : ssh_scp -> bytes -> unit = "libssh_ml_ssh_scp_write"
   
 end

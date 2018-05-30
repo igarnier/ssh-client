@@ -95,31 +95,30 @@ let auth_password ~session ~options:{ host; username; port; log_level } ~passwor
   options_set session (SSH_OPTIONS_USER username);
   options_set session (SSH_OPTIONS_PORT port);
   options_set session (SSH_OPTIONS_LOG_VERBOSITY log_level);
-  check_else "auth_password: connection failed"
-    (Raw.Session.connect session);
+  check_else "connect" (Raw.Session.connect session);
   match Raw.Userauth.password session username password with
   | SSH_AUTH_SUCCESS -> ()
   | _ ->
-    failwith "auth_password: failed to connect - please check logs"
+    failwith "auth_password failed"
 
 (* Read password from stdin in a stealthy manner *)
-let read_password () =
+let read_secret () =
   let open Unix in
   let term_init = tcgetattr stdin in
   let term_no_echo = { term_init with c_echo = false } in
-  tcsetattr stdin TCSANOW term_no_echo;
+  tcsetattr stdin TCSADRAIN term_no_echo;
   let password =
     try read_line ()
     with _ ->
       (tcsetattr stdin TCSAFLUSH term_init;
-       failwith "read_password: readline failed")
+       failwith "read_secret: readline failed")
   in 
   tcsetattr stdin TCSAFLUSH term_init;
   password
 
 let input_password ~host ~username =
-  Printf.printf "password for %s@%s:%!" username host;
-  read_password ()
+  Printf.printf "password for %s@%s: %!" username host;
+  read_secret ()
 
 (* Opens a session in password mode *)
 let with_password : options:options -> (ssh_session -> 'a) -> 'a  =
@@ -142,10 +141,11 @@ let with_password : options:options -> (ssh_session -> 'a) -> 'a  =
         close_out input_chan;
         exit 0
       with
-      | _ ->
+      | Failure s ->
         (Raw.Session.close ssh_session;
          let input_chan = Unix.out_channel_of_descr input in
          close_out input_chan;
+         Printf.eprintf "Failure exception caught: %s\n" s;
          exit 1)
     end else begin
       Unix.close input;
@@ -178,5 +178,60 @@ let execute ?(read_stderr=false) ?(read_timeout=100) (channel : shell_handle) co
     failwith "Easy.execute: error while writing command to channel"
 
 
+
+let close_and_free scp =
+  match Raw.Scp.close scp with
+  | SSH_ERROR -> Printf.eprintf "Could not close scp connection properly.\n"
+  | _ -> Raw.Scp.free scp
+
+let push_file scp file size mode =
+  match Raw.Scp.push_file scp file size mode with
+  | SSH_OK -> Printf.eprintf "%s pushed\n%!" file
+  | _      ->
+    (close_and_free scp;
+     failwith "Easy.scp: could not push file")
+
+let safe_write scp buffer =
+  try Raw.Scp.write scp buffer with
+  | exn ->
+    (close_and_free scp;
+     raise exn)
+
+
 let scp ~session ~src_path ~dst_path ~mode =
-  ()
+  Printf.printf "Unix.getcwd: %s\n" (Unix.getcwd ());
+  match Unix.stat src_path with
+  | { Unix.st_kind; st_size } ->
+    begin match st_kind with
+      | Unix.S_REG ->
+        File.with_file_in src_path ~perm:File.user_read
+          (fun inchan ->
+             let dir_path, file = Filename.(dirname dst_path, basename dst_path) in
+             let scp = Raw.Scp.new_ session SSH_SCP_WRITE_RECURSIVE dir_path in
+             (match Raw.Scp.init scp with
+              | SSH_OK ->
+                (* allocate buffer to read file *)
+                let buffer = Bytes.create st_size in
+                (* let readn  = Unix.read fd buffer 0 st_size in *)
+                let readn  = IO.really_input inchan buffer 0 st_size in
+                if readn <> st_size then
+                  (close_and_free scp;
+                   let msg =
+                     Printf.sprintf "Easy.scp: could not read whole file: %d/%d bytes read." readn st_size
+                   in
+                   failwith msg)
+                else
+                  (push_file scp file st_size mode;
+                   safe_write scp buffer;
+                   close_and_free scp)
+              | _ ->
+                (Raw.Scp.free scp;
+                 failwith "Easy.scp: Scp.init failed")
+             )
+          )
+      | _ ->
+        failwith (Printf.sprintf "Easy.scp: %s not a regular file" src_path)
+    end
+  | exception (Unix.Unix_error(Unix.ENOENT, _, _ )) ->
+    failwith (Printf.sprintf "Easy.scp: %s not found" src_path)
+
