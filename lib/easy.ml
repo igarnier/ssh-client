@@ -84,7 +84,8 @@ let with_shell_channel ~session f =
   with_channel ~session (fun channel ->
       with_session ~channel (fun () ->
           channel_request_shell channel;
-          f channel
+          let motd = Raw.Channel.read_timeout channel false 100 in
+          f channel motd
         )
     )
 
