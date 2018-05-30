@@ -205,7 +205,6 @@ let safe_write scp buffer =
 
 
 let scp ~session ~src_path ~dst_path ~mode =
-  Printf.printf "Unix.getcwd: %s\n" (Unix.getcwd ());
   match Unix.stat src_path with
   | { Unix.st_kind; st_size } ->
     begin match st_kind with
