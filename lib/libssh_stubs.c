@@ -20,14 +20,14 @@
 
 #define BUFFERSIZE 256
 
-// a table to convert from SSH error codes to variant types
+// a table to convert from SSH session error codes to variant tags
 #define ML_SSH_OK 0
 #define ML_SSH_ERROR 1
 #define ML_SSH_AGAIN 2
 #define ML_SSH_EOF 3
-#define ML_SSH_UNKNOWN 4
+// #define ML_SSH_UNKNOWN 4 (this is not a libssh code)
 
-#define return_rc(_m) do {\
+#define return_sess_rc(_m) do {\
      switch(_m) {\
      case SSH_OK:\
           CAMLreturn(Val_int(ML_SSH_OK));\
@@ -42,24 +42,87 @@
           CAMLreturn(Val_int(ML_SSH_EOF));\
           break;\
      default:\
-          fprintf(stderr, "__FUNCTION__: unknown errcode");\
+          fprintf(stderr, "__FUNCTION__: unknown session errcode");\
           abort();\
           break;\
      }\
 } while(0)
 
 
+// converting ssh auth error codes to variant tags
+#define ML_SSH_AUTH_SUCCESS 0
+#define ML_SSH_AUTH_DENIED 1
+#define ML_SSH_AUTH_PARTIAL 2
+#define ML_SSH_AUTH_INFO 3
+#define ML_SSH_AUTH_AGAIN 4
+#define ML_SSH_AUTH_ERROR 5
+
+#define return_auth_rc(_m) do {\
+     switch(_m) {\
+     case SSH_AUTH_SUCCESS:\
+          CAMLreturn(Val_int(ML_SSH_AUTH_SUCCESS));\
+          break;\
+     case SSH_AUTH_DENIED:\
+          CAMLreturn(Val_int(ML_SSH_AUTH_DENIED));\
+          break;\
+     case SSH_AUTH_PARTIAL:\
+          CAMLreturn(Val_int(ML_SSH_AUTH_PARTIAL));\
+          break;\
+     case SSH_AUTH_INFO:\
+          CAMLreturn(Val_int(ML_SSH_AUTH_INFO));\
+          break;\
+     case SSH_AUTH_AGAIN:\
+          CAMLreturn(Val_int(ML_SSH_AUTH_AGAIN));\
+          break;\
+     case SSH_AUTH_ERROR:\
+          CAMLreturn(Val_int(ML_SSH_AUTH_ERROR));\
+          break;\
+     default:\
+          fprintf(stderr, "__FUNCTION__: unknown auth errcode");\
+          abort();\
+          break;\
+     }\
+} while(0)
+
+
+// converting ssh scp modes to variant tags
+#define ML_SSH_SCP_WRITE 0
+#define ML_SSH_SCP_READ 1
+#define ML_SSH_SCP_WRITE_RECURSIVE 2
+#define ML_SSH_SCP_READ_RECURSIVE 3
+
+
+// TODO: This has to go.
 struct result { int status; char *output; };
+
+/** Functions related to userauth */
+
+CAMLprim value libssh_ml_ssh_userauth_password(value session, value username, value password)
+{
+     CAMLparam3(session, username, password);
+
+     ssh_session sess = (ssh_session) session;
+     
+     char* cusrname = caml_strdup(String_val(username));
+     char* cpasswd  = caml_strdup(String_val(password));
+
+     const int rc = ssh_userauth_password(sess, cusrname, cpasswd);
+
+     caml_stat_free(cusrname);
+     caml_stat_free(cpasswd);     
+
+     return_auth_rc(rc);
+}
 
 /** Functions related to sessions */
 
-CAMLprim value libssh_ml_ssh_init(void)
+CAMLprim value libssh_ml_ssh_new(void)
 {
      CAMLparam0();
      ssh_session sess = ssh_new();
 
      if(!sess) {
-          caml_failwith("Couldn't allocate ssh session");
+          caml_failwith("Couldn't initiate ssh session");
      }
 
      CAMLreturn((value) sess);
@@ -73,7 +136,7 @@ CAMLprim value libssh_ml_ssh_connect(value session)
      
      const int rc = ssh_connect(sess);
 
-     return_rc(rc);
+     return_sess_rc(rc);
 }
 
 CAMLprim value libssh_ml_ssh_disconnect(value session)
@@ -100,10 +163,87 @@ CAMLprim value libssh_ml_ssh_close(value session)
      CAMLreturn(Val_unit);
 }
 
+CAMLprim value libssh_ml_ssh_options_set(value session, value option)
+{
+     CAMLparam2(session, option);
+     CAMLlocal1(field);
+
+     char* cstr = NULL;
+     int   intv = 0;
+     int   rc   = 0;
+     int   tag  = 0;
+     ssh_session sess = (ssh_session) session;
+
+     assert(Is_block(option));
+
+     tag = Tag_val(option);
+
+     switch(tag) {
+     case SSH_OPTIONS_HOST:
+     case SSH_OPTIONS_PORT_STR:
+     case SSH_OPTIONS_USER:
+     case SSH_OPTIONS_SSH_DIR:
+     case SSH_OPTIONS_IDENTITY:
+     case SSH_OPTIONS_ADD_IDENTITY:
+     case SSH_OPTIONS_KNOWNHOSTS:
+     case SSH_OPTIONS_LOG_VERBOSITY_STR:
+     case SSH_OPTIONS_CIPHERS_C_S:
+     case SSH_OPTIONS_CIPHERS_S_C:
+     case SSH_OPTIONS_COMPRESSION_C_S:
+     case SSH_OPTIONS_COMPRESSION_S_C:
+     case SSH_OPTIONS_PROXYCOMMAND:
+     case SSH_OPTIONS_BINDADDR:
+     case SSH_OPTIONS_COMPRESSION:          
+     case SSH_OPTIONS_KEY_EXCHANGE:
+     case SSH_OPTIONS_HOSTKEYS:
+     case SSH_OPTIONS_GSSAPI_SERVER_IDENTITY:
+     case SSH_OPTIONS_GSSAPI_CLIENT_IDENTITY:
+          // String case
+          field = Field(option, 0);
+          cstr  = caml_strdup(String_val(field));
+          rc = ssh_options_set(sess, tag, cstr);
+          caml_stat_free(cstr);
+          break;
+
+     case SSH_OPTIONS_PORT:
+     case SSH_OPTIONS_FD:
+     case SSH_OPTIONS_TIMEOUT:
+     case SSH_OPTIONS_TIMEOUT_USEC:
+     case SSH_OPTIONS_COMPRESSION_LEVEL:
+          // Integer case
+          field = Field(option, 0);
+          intv  = Int_val(field);
+          rc = ssh_options_set(sess, tag, &intv);
+          break;
+     
+     case SSH_OPTIONS_SSH1:
+     case SSH_OPTIONS_SSH2:
+     case SSH_OPTIONS_STRICTHOSTKEYCHECK:
+     case SSH_OPTIONS_GSSAPI_DELEGATE_CREDENTIALS:
+          // Boolean case
+          field = Field(option, 0);
+          intv  = Bool_val(field);
+          rc =ssh_options_set(sess, tag, &intv);
+          break;
+          
+     case SSH_OPTIONS_LOG_VERBOSITY:
+          // ssh_verbosity case
+          field = Field(option, 0);
+          intv  = Int_val(field);
+          rc = ssh_options_set(sess, tag, &intv);
+          break;
+
+     default:
+          caml_failwith("libssh_ml_ssh_options_set: unknown tag");
+     }
+
+     return_sess_rc(rc);
+}
+
 
 /** Functions related to channels */
 
-CAMLprim value libssh_ml_channel_create(value session)
+CAMLprim value libssh_ml_ssh_channel_new(value session)
 {
      CAMLparam1(session);
 
@@ -116,16 +256,16 @@ CAMLprim value libssh_ml_channel_create(value session)
      CAMLreturn((value) channel);
 }
 
-CAMLprim value libssh_ml_channel_close(value channel)
+CAMLprim value libssh_ml_ssh_channel_close(value channel)
 {
      CAMLparam1(channel);
 
      const int rc = ssh_channel_close((ssh_channel) channel);
 
-     return_rc(rc);
+     return_sess_rc(rc);
 }
 
-CAMLprim value libssh_ml_channel_free(value channel)
+CAMLprim value libssh_ml_ssh_channel_free(value channel)
 {
      CAMLparam1(channel);
 
@@ -134,16 +274,16 @@ CAMLprim value libssh_ml_channel_free(value channel)
      CAMLreturn(Val_unit);
 }
 
-CAMLprim value libssh_ml_channel_open_session(value channel)
+CAMLprim value libssh_ml_ssh_channel_open_session(value channel)
 {
      CAMLparam1(channel);
      
      const int rc = ssh_channel_open_session((ssh_channel) channel);
 
-     return_rc(rc);
+     return_sess_rc(rc);
 }
 
-CAMLprim value libssh_ml_channel_request_exec(value channel, value cmd)
+CAMLprim value libssh_ml_ssh_channel_request_exec(value channel, value cmd)
 {
      CAMLparam2(channel, cmd);
 
@@ -151,34 +291,36 @@ CAMLprim value libssh_ml_channel_request_exec(value channel, value cmd)
 
      const int rc  = ssh_channel_request_exec((ssh_channel) channel, command);
 
-     return_rc(rc);
+     caml_stat_free(command);
+
+     return_sess_rc(rc);
 }
 
-CAMLprim value libssh_ml_channel_request_pty(value channel)
+CAMLprim value libssh_ml_ssh_channel_request_pty(value channel)
 {
      CAMLparam1(channel);
 
      const int rc = ssh_channel_request_pty((ssh_channel) channel);
 
-     return_rc(rc);
+     return_sess_rc(rc);
 }
 
-CAMLprim value libssh_ml_channel_change_pty_size(value channel, value x, value y)
+CAMLprim value libssh_ml_ssh_channel_change_pty_size(value channel, value x, value y)
 {
      CAMLparam3(channel, x, y);
 
      const int rc = ssh_channel_change_pty_size((ssh_channel) channel, Int_val(x), Int_val(y));
 
-     return_rc(rc);
+     return_sess_rc(rc);
 }
 
-CAMLprim value libssh_ml_channel_request_shell(value channel)
+CAMLprim value libssh_ml_ssh_channel_request_shell(value channel)
 {
      CAMLparam1(channel);
 
      const int rc = ssh_channel_request_shell((ssh_channel) channel);
 
-     return_rc(rc);
+     return_sess_rc(rc);
 }
 
 int read_until_empty(ssh_channel channel, char** output, int timeout, int is_stderr)
@@ -288,7 +430,7 @@ CAMLprim value libssh_ml_channel_read_timeout(value channel, value is_stderr, va
 /*      CAMLreturn(output_val); */
 /* } */
 
-CAMLprim value libssh_ml_channel_write(value channel, value data)
+CAMLprim value libssh_ml_ssh_channel_write(value channel, value data)
 {
      CAMLparam2(channel, data);
 
@@ -300,21 +442,236 @@ CAMLprim value libssh_ml_channel_write(value channel, value data)
      caml_stat_free(cdata);
      
      if(rc < 0) {
-          return_rc(rc);
+          return_sess_rc(rc);
      } else {
           CAMLreturn(Val_int(ML_SSH_OK));
      }
 }
 
-CAMLprim value libssh_ml_channel_send_eof(value channel)
+CAMLprim value libssh_ml_ssh_channel_send_eof(value channel)
 {
      CAMLparam1(channel);
      
      const int rc = ssh_channel_send_eof((ssh_channel) channel);
 
-
-     return_rc(rc);
+     return_sess_rc(rc);
 }
+
+
+/** scp-related bindings */
+
+CAMLprim value libssh_ml_scp_accept_request(value scp)
+{
+     CAMLparam1(scp);
+     
+     const int rc = ssh_scp_accept_request((ssh_scp) scp);
+
+     return_sess_rc(rc);
+}
+
+CAMLprim value libssh_ml_scp_close(value scp)
+{
+     CAMLparam1(scp);
+     
+     const int rc = ssh_scp_close((ssh_scp) scp);
+
+     return_sess_rc(rc);
+}
+
+CAMLprim value libssh_ml_scp_deny_request(value scp, value reason)
+{
+     CAMLparam2(scp, reason);
+
+     char* c_reason = caml_strdup(String_val(reason));
+     
+     const int rc = ssh_scp_deny_request((ssh_scp) scp, c_reason);
+
+     caml_stat_free(c_reason);
+ 
+     return_sess_rc(rc);
+}
+
+CAMLprim value libssh_ml_scp_free(value scp)
+{
+     CAMLparam1(scp);
+     
+     ssh_scp_free((ssh_scp) scp);
+
+     CAMLreturn(Val_unit);
+}
+
+
+CAMLprim value libssh_ml_scp_init(value scp)
+{
+     CAMLparam1(scp);
+     
+     const int rc = ssh_scp_init((ssh_scp) scp);
+
+     return_sess_rc(rc);
+}
+
+CAMLprim value libssh_ml_scp_leave_directory(value scp)
+{
+     CAMLparam1(scp);
+     
+     const int rc = ssh_scp_leave_directory((ssh_scp) scp);
+
+     return_sess_rc(rc);
+}
+
+CAMLprim value libssh_ml_ssh_scp_new(value session, value mode, value location)
+{
+     CAMLparam3(session, mode, location);
+     
+     ssh_session sess = (ssh_session) session;
+     char* c_location = caml_strdup(String_val(location));
+     int c_mode = 0;
+     ssh_scp result = NULL;
+
+     switch(Int_val(mode)) {
+     case ML_SSH_SCP_WRITE:
+          c_mode = SSH_SCP_WRITE;
+          break;
+     case ML_SSH_SCP_READ:
+          c_mode = SSH_SCP_READ;
+          break;
+     case ML_SSH_SCP_WRITE_RECURSIVE:
+          c_mode = SSH_SCP_WRITE | SSH_SCP_RECURSIVE;
+          break;
+     case ML_SSH_SCP_READ_RECURSIVE:
+          c_mode = SSH_SCP_READ | SSH_SCP_RECURSIVE;
+          break;
+     default:
+          caml_stat_free(c_location);
+          caml_failwith("libssh_ml_ssh_scp_new: wrong mode");
+     }
+
+     result = ssh_scp_new(sess, c_mode, c_location);
+
+     caml_stat_free(c_location);
+     
+     if(!result) {
+          caml_failwith("Could not allocate initiate scp session");
+     }
+
+     CAMLreturn((value) result);
+}
+
+CAMLprim value libssh_ml_ssh_scp_pull_request(value scp)
+{
+     CAMLparam1(scp);
+     CAMLlocal1(output_val);
+    
+     const int rc = ssh_scp_pull_request((ssh_scp) scp);
+     int caml_tag = -1;
+
+     // the cases below and the caml_tag should match the order of tag declaration in types.ml
+     switch(rc) {
+     case SSH_SCP_REQUEST_NEWDIR:
+          caml_tag = 0;
+          break;          
+     case SSH_SCP_REQUEST_NEWFILE:
+          caml_tag = 1;
+          break;
+     case SSH_SCP_REQUEST_EOF:
+          caml_tag = 2;
+          break;          
+     case SSH_SCP_REQUEST_ENDDIR:
+          caml_tag = 3;
+          break;          
+     case SSH_SCP_REQUEST_WARNING:
+          caml_tag = 4;
+          break;          
+     case SSH_ERROR:
+          caml_tag = 5;
+          break;          
+     default:
+          caml_failwith("libssh_ml_ssh_scp_pull_request: unexpected return code");
+     }
+
+     output_val = Val_int(caml_tag);
+
+     CAMLreturn(output_val);
+}
+
+CAMLprim value libssh_ml_ssh_scp_push_directory(value scp, value dirname, value mode)
+{
+     CAMLparam3(scp, dirname, mode);
+
+     char* c_dirname = caml_strdup(String_val(dirname));
+
+     const int c_mode = Int_val(mode);
+
+     const int rc = ssh_scp_push_directory((ssh_scp) scp, c_dirname, c_mode);
+     
+     caml_stat_free(c_dirname);
+
+     return_sess_rc(rc);
+}
+
+CAMLprim value libssh_ml_ssh_scp_push_file(value scp, value filename, value size, value mode)
+{
+     CAMLparam4(scp, filename, size, mode);
+     
+     char* c_filename = caml_strdup(String_val(filename));
+
+     const size_t c_size = Int_val(size);
+
+     const int c_mode = Int_val(mode);
+
+     const int rc = ssh_scp_push_file((ssh_scp) scp, c_filename, c_size, c_mode);
+
+     caml_stat_free(c_filename);
+
+     return_sess_rc(rc);     
+}
+
+
+CAMLprim value libssh_ml_ssh_scp_push_file64(value scp, value filename, value size, value mode)
+{
+     CAMLparam4(scp, filename, size, mode);
+     
+     char* c_filename = caml_strdup(String_val(filename));
+
+     const uint64_t c_size = Int64_val(size);
+
+     const int c_mode = Int_val(mode);
+     
+     const int rc = ssh_scp_push_file64((ssh_scp) scp, c_filename, c_size, c_mode);
+
+     caml_stat_free(c_filename);
+
+     return_sess_rc(rc);     
+}
+
+/* bindings unimplemented */
+/* LIBSSH_API int ssh_scp_read(ssh_scp scp, void *buffer, size_t size); */
+
+CAMLprim value libssh_ml_ssh_scp_request_get_filename(value scp)
+{
+     CAMLparam1(scp);
+     CAMLlocal1(str);
+
+     const char* res = ssh_scp_request_get_filename((ssh_scp) scp);
+
+     if(!res) {
+          caml_failwith("libssh_ml_ssh_scp_request_get_filename: NULL filename");
+     }
+
+     str = caml_copy_string(res);
+
+     CAMLreturn(str);
+}
+
+
+/* LIBSSH_API int ssh_scp_request_get_permissions(ssh_scp scp); */
+/* LIBSSH_API size_t ssh_scp_request_get_size(ssh_scp scp); */
+/* LIBSSH_API uint64_t ssh_scp_request_get_size64(ssh_scp scp); */
+/* LIBSSH_API const char *ssh_scp_request_get_warning(ssh_scp scp); */
+
+LIBSSH_API int ssh_scp_write(ssh_scp scp, const void *buffer, size_t len);
+
+
 
 
 /** Original libssh bindings (minus some bugs) */
@@ -556,6 +913,7 @@ static ssh_scp prepare(const char* base_path, ssh_session sess)
      }
      result_code = ssh_scp_init(scp);
      check_result(result_code, sess);
+
      return scp;
 }
 

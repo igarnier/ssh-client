@@ -1,10 +1,13 @@
-open Common
+open Types
 
+type auth =
+  | Auto        (** Authenticate using the Ssh agent, assuming its running *)
+  | Interactive (** Type in the password on the command line*)
 
 type options = { host: string;
                  username : string;
                  port : int;
-                 log_level : log_level;
+                 log_level : ssh_verbosity;
                  auth : auth
                }
 
@@ -43,7 +46,8 @@ let check_else msg res =
     raise (InternalError msg)
 
 let with_shell f session =
-  let chan = Channel.create session in
+  let open Raw in
+  let chan = Channel.new_ session in
   try
     check_else "Client.with_channel: open_session" (Channel.open_session chan);
     (* check_else "Client.with_channel: request_pty error" (Channel.request_pty chan);

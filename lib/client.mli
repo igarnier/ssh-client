@@ -1,18 +1,4 @@
-open Common
-
-module Channel :
-sig
-  val read_timeout : ssh_channel -> bool -> int -> string
-  val write : ssh_channel -> string -> error_code
-end
-
-(** Different log levels in increasing order of verbosity *)
-type log_level =
-  | SSH_LOG_NOLOG     (** No logging at all *)
-  | SSH_LOG_WARNING   (** Only warnings *)
-  | SSH_LOG_PROTOCOL  (** High level protocol information *)
-  | SSH_LOG_PACKET    (** Lower level protocol infomations, packet level *)
-  | SSH_LOG_FUNCTIONS (** Every function path *)
+open Types
 
 (** Different kinds of authentication accepted by libssh *)
 type auth =
@@ -23,7 +9,7 @@ type auth =
 type options = { host: string;
                  username : string;
                  port : int;
-                 log_level : log_level;
+                 log_level : ssh_verbosity;
                  auth : auth
                }
 
