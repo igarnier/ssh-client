@@ -14,6 +14,7 @@ type options =
 type shell_handle
 
 val read_secret : unit -> string
+val input_password: host:string -> username:string -> string
 
 val with_password : options:options -> ?password:string -> (ssh_session -> 'a) -> 'a
 val with_shell_channel : session:ssh_session -> (shell_handle -> string -> 'a) -> 'a
