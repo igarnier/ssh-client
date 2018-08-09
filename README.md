@@ -4,3 +4,9 @@ but then took a life of its own.
 
 The library consists of low-level bindings, which can be accessed through the module `Raw`,
 on top which high-level functionalities are built (module `Easy`).
+
+* INSTALL
+
+1) Install the `batteries` package via `opam` and libssh (including the dev package)
+using your OS's package manager.
+2) `jbuilder build && jbuilder install`

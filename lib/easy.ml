@@ -119,7 +119,9 @@ let read_secret () =
 
 let input_password ~host ~username =
   Printf.printf "password for %s@%s: %!" username host;
-  read_secret ()
+  let res = read_secret () in
+  print_newline ();
+  res
 
 (* Opens a session in password mode *)
 let with_password : options:options -> ?password:string -> (ssh_session -> 'a) -> 'a  =
@@ -129,7 +131,7 @@ let with_password : options:options -> ?password:string -> (ssh_session -> 'a) -
     let output, input = Unix.pipe () in  
     let this_pid      = Unix.fork () in
     if this_pid < 0 then
-      failwith "Easy.with_session: error while forking"
+      failwith "Easy.with_password: error while forking"
     else if this_pid = 0 then begin
       let ssh_session = Raw.Session.new_ () in
       let password    =
